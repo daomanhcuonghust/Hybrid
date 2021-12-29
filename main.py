@@ -1,5 +1,9 @@
 import argparse
+from utils.loops import train
+import yaml
 
+def seed():
+    pass
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -12,5 +16,14 @@ def parse_args():
     return parser.parse_args()
 
 if __name__ == '__main__':
+    seed()
     args = parse_args()
+
+    with open("config/hyperparameter.yaml") as f:
+        config = yaml.safe_load(f)
+    for arg in args:
+        config.arg = args.arg
+    with open('config/hyperparameter.yaml', 'w') as f:
+        yaml.dump(config, f)
+    train(config=config)
     

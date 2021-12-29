@@ -5,6 +5,7 @@ class Hybrid(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.batchsize = config.batch_size
+        self.num_station = config.num_station
 
         self.in_channels1 = config.conv.in_channels1
         self.in_channels2 = config.conv.in_channels2
@@ -58,13 +59,16 @@ class Hybrid(nn.Module):
         self.relu = nn.ReLU()
         self.maxpool = nn.MaxPool1d(kernel_size=self.kernel_size_maxpool, padding=self.padding_maxpool, stride=self.stride_maxpool)
 
-    def forward(self, list_x, hidden):
+    def forward(self, x):
         # list_x is list of multiple stations data
         # xi has shape(batch_size, features, seq_length)
         # list_L is list of multiple conv output
+        hidden = self.init_hidden()
+
         list_L = []
-        for x in list_x:
-            out_conv1 = self.relu(self.batchnorm(self.conv1(x)))
+        for i in range(self.num_station):
+            xi = x[:, i*14 : (i+1)*14]
+            out_conv1 = self.relu(self.batchnorm(self.conv1(xi)))
             out_conv2 = self.relu(self.batchnorm(self.conv2(out_conv1)))
             out_conv3 = self.relu(self.batchnorm(self.conv3(out_conv2)))
             out_flatten = self.flatten(out_conv3)
