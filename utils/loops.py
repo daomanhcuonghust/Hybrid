@@ -77,11 +77,11 @@ def train(config, ):
             count = 0
             if rmse > best_rmse and mae > best_mae:
                 count += 1
-                if(count == 15):
+                if(count == 10):
                     torch.save({'iter': epoch,
                                 'model_state_dict': model.state_dict(),
                                 'optimizer_state_dict': optimizer.state_dict(),},
-                                os.path.join('checkpoints', "epoch"+str(epoch)+"_acc"+str(acc)+"_bacc"+str(bacc)+".pth"))
+                                os.path.join('checkpoints', "epoch"+str(epoch)+"_rmse"+str(best_rmse)+"_mae"+str(best_mae)+".pth"))
                     tqdm.write('Model saved.')
                     tqdm.write('Early stopping')
                     break
