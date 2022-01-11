@@ -12,18 +12,24 @@ def get_data_array(file_path):
     # location = location_df.values[:,1:]
     # location_ = location[:,[1,0]]
     
-    list_dataset = []
+    list_data = []
+    list_label = []
     for i in stations:
         df = pd.read_csv(file_path  + f"{i}.csv")
         # df = df.fillna(method='ffill')
         # df = df.fillna(10)
-        data = df.iloc[:,1:].astype(float).values
-        label = df.iloc[:, 3].astype(float).values
-        dataset = np.concatenate((data, label), axis=1)
-        dataset = np.expand_dims(dataset,axis=0)
-        list_dataset.append(dataset)
-    list_dataset = np.concatenate(list_dataset,axis=0)
-    return list_dataset,stations
+
+        data = df.iloc[:,6:].astype(float).values
+        label = df.iloc[:, 8].astype(float).values
+        label = np.expand_dims(label, axis=1)
+        # dataset = np.concatenate((data, label), axis=1)
+        data_dataset = np.expand_dims(data, axis=0)
+        label_dataset = np.expand_dims(label, axis=0)
+        list_data.append(data_dataset)
+        list_label.append(label_dataset)
+    list_data_dataset = np.concatenate(list_data,axis=0)
+    list_label_dataset = np.concatenate(list_label, axis=0)
+    return list_data_dataset, list_label_dataset, stations
 
 
 def min_max_scaler(list_dataset, stations):
@@ -32,9 +38,10 @@ def min_max_scaler(list_dataset, stations):
         scaleri = []
         for j in range(list_dataset.shape[2]):
             scalerj = MinMaxScaler()
-            scalerj.fit_transform(list_dataset[i, :, j:j+1])
+            list_dataset[i, :, j:j+1] = scalerj.fit_transform(list_dataset[i, :, j:j+1])
             scaleri.append(scalerj)
         list_scaler.append(scaleri)
+
     
     return list_dataset, list_scaler
 
@@ -73,32 +80,51 @@ def my_series_to_supervised(data, n_in=1, n_out=1, n_timestep=1, dropnan=True):
 	return agg
 
 
-def make_list_dataframe(list_dataset, list_station,  n_in, n_out, n_timestep):
-    list_dataframe = []
-    for i in range(list_station):
-        dataset_i = list_dataset[i, :, :]
-        dataframe_i = my_series_to_supervised(dataset_i, n_in=n_in, n_out=n_out, n_timestep=n_timestep)
-        list_dataframe.append(dataframe_i)
+# def make_list_dataframe(list_dataset, list_station,  n_in, n_out, n_timestep):
+#     list_dataframe = []
+#     for i in list_station:
+#         dataset_i = list_dataset[i, :, :]
+#         dataframe_i = my_series_to_supervised(dataset_i, n_in=n_in, n_out=n_out, n_timestep=n_timestep)
+#         list_dataframe.append(dataframe_i)
     
-    return list_dataframe
+#     return list_dataframe
 
 
 def make_dataset(data_path, list_station, n_in, n_out, n_timestep, batch_size):
-    list_dataset, stations = get_data_array(data_path)
-    list_dataset, list_scaler = min_max_scaler(list_dataset, stations)
-    list_dataframe = make_list_dataframe(list_dataset, list_station, n_in, n_out, n_timestep)
-    
-    list_data = []
-    list_label = []
-    for dataframe in list_dataframe:
-        list_data.append(dataframe.iloc[:, :-1])
-        list_label.append(dataframe.iloc[:, -1])
-    
-    data = pd.concat(list_data, axis=1).astype('float32').values
-    label = pd.concat(list_label, axis=1).astype('float32').values
+    list_data_dataset, list_label_dataset, stations = get_data_array(data_path)
+    list_data_dataset, list_data_scaler = min_max_scaler(list_data_dataset, stations)
+    list_label_dataset, list_label_scaler = min_max_scaler(list_label_dataset, stations)
 
-    data_train, data_valid, label_train, label_valid = train_test_split(data, label, test_size=0.2, random_state=42)
+    list_data_dataframe = []
+    list_label_dataframe = []
+    list_label_scaler_station = []
+    for i in list_station:
+        list_data_dataframe.append(list_data_dataset[i, :, :].reshape(list_data_dataset.shape[1], -1))
+        list_label_dataframe.append(list_label_dataset[i, :, :].reshape(list_label_dataset.shape[1], -1))
+        list_label_scaler_station.append(list_label_scaler[i])
+    data_frame = np.concatenate(list_data_dataframe, axis=1)
+    label_frame = np.concatenate(list_label_dataframe, axis=1)
+    import pdb;pdb.set_trace()
 
+    # list_dataframe = make_list_dataframe(list_dataset, list_station, n_in, n_out, n_timestep)
+    data_dataframe = my_series_to_supervised(data_frame, n_in, 1, n_timestep)
+    label_dataframe = my_series_to_supervised(label_frame, n_in, n_out, n_timestep)
+    data = data_dataframe.iloc[:, :-1*len(list_station)*14].astype('float32').values
+    label = label_dataframe.iloc[:, -len(list_station):].astype('float32').values
+    # list_data = []
+    # list_label = []
+    # for dataframe in list_dataframe:
+    #     list_data.append(dataframe.iloc[:, :-1])
+    #     list_label.append(dataframe.iloc[:, -1])
+    
+    # data = pd.concat(list_data, axis=1).astype('float32').values
+    # label = pd.concat(list_label, axis=1).astype('float32').values
+
+    data_train, data_valid_test, label_train, label_valid_test = train_test_split(data, label, test_size=0.4, random_state=42)
+    data_valid, data_test, label_valid, label_test = train_test_split(data_valid_test, label_valid_test, test_size=0.5, random_state=42)
+    # data_train = np.expand_dims(data_train, axis=1)
+    # data_valid = np.expand_dims(data_valid, axis=1)
+    
     #create tensor datasets
     train_data = TensorDataset(torch.from_numpy(data_train), torch.from_numpy(label_train))
     valid_data = TensorDataset(torch.from_numpy(data_valid), torch.from_numpy(label_valid))
@@ -107,5 +133,5 @@ def make_dataset(data_path, list_station, n_in, n_out, n_timestep, batch_size):
     train_dataloader = DataLoader(train_data, shuffle=True, batch_size=batch_size, drop_last=True)
     valid_dataloader = DataLoader(valid_data, shuffle=True, batch_size=batch_size, drop_last=True)
 
-    return train_dataloader, valid_dataloader
+    return train_dataloader, valid_dataloader, (data_test, label_test), list_label_scaler_station
 

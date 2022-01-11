@@ -1,5 +1,5 @@
 import argparse
-from utils.loops import train
+from utils.loops import train, test
 import yaml
 
 def seed():
@@ -21,9 +21,9 @@ if __name__ == '__main__':
 
     with open("config/hyperparameter.yaml") as f:
         config = yaml.safe_load(f)
-    for arg in args:
-        config.arg = args.arg
-    with open('config/hyperparameter.yaml', 'w') as f:
-        yaml.dump(config, f)
-    train(config=config)
-    
+    # for arg in args:
+    #     config.arg = args.arg
+    # with open('config/hyperparameter.yaml', 'w') as f:
+    #     yaml.dump(config, f)
+    data_test, label_test, list_label_scaler_station, path = train(config=config)
+    test(data_test, label_test, list_label_scaler_station, path, config)
