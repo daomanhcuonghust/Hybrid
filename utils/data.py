@@ -4,123 +4,74 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 import torch
 from torch.utils.data import TensorDataset, DataLoader
+import os
 
+def get_data_array(file_path, config):
+    file_gauge = file_path + 'gauges_processed/'
+    file_location = file_path + 'location.csv' 
+    nan_station = config['data']['nan_station']
 
-def get_data_array(file_path):
-    location_df = pd.read_csv(file_path + "location.csv")
-    stations = location_df['location'].values
-    # location = location_df.values[:,1:]
-    # location_ = location[:,[1,0]]
-    
+    # list_station = list(set([ stat.split('.csv')[0] for stat in os.listdir(file_gauge)]) - set(nan_station))
+    list_station = [ stat.split('.csv')[0] for stat in os.listdir(file_gauge) if stat.split('.csv')[0] not in nan_station]
+    list_input_ft = config['data']['input_features']
+    target_output_ft = config['data']['target_features'] 
+
+    scaler_data = MinMaxScaler()
+    scaler_label = MinMaxScaler()
     list_data = []
     list_label = []
-    for i in stations:
-        df = pd.read_csv(file_path  + f"{i}.csv")
-        # df = df.fillna(method='ffill')
-        # df = df.fillna(10)
+    # print(list_station)
+    for stat in list_station:
+      # list station data
+      df = pd.read_csv(file_gauge  + f"{stat}.csv")
+      data = df[list_input_ft]
+      label = df[target_output_ft]
 
-        data = df.iloc[:,6:].astype(float).values
-        label = df.iloc[:, 8].astype(float).values
-        label = np.expand_dims(label, axis=1)
-        # dataset = np.concatenate((data, label), axis=1)
-        data_dataset = np.expand_dims(data, axis=0)
-        label_dataset = np.expand_dims(label, axis=0)
-        list_data.append(data_dataset)
-        list_label.append(label_dataset)
-    list_data_dataset = np.concatenate(list_data,axis=0)
-    list_label_dataset = np.concatenate(list_label, axis=0)
-    return list_data_dataset, list_label_dataset, stations
+      data = data.astype(np.float32).values
+      label = label.astype(np.float32).values
+      # arr = np.expand_dims(arr,axis=1) # date, station, feat
+      list_data.append(data)
+      list_label.append(label)
 
+    # list_arr = np.concatenate(list_arr,axis=1)   
+    num_ft = list_data[0].shape[-1]  #14
 
-def min_max_scaler(list_dataset, stations):
-    list_scaler = []
-    for i in range(stations.size):
-        scaleri = []
-        for j in range(list_dataset.shape[2]):
-            scalerj = MinMaxScaler()
-            list_dataset[i, :, j:j+1] = scalerj.fit_transform(list_dataset[i, :, j:j+1])
-            scaleri.append(scalerj)
-        list_scaler.append(scaleri)
-
+    data = np.concatenate(list_data, axis=0) # 8642 * 20, 14
+    label = np.concatenate(list_label, axis=0)
+    scaled_data = scaler_data.fit_transform(data)
+    scaled_label = scaler_label.fit_transform(label)
+    # transformed = scaler.transform(list_arr)
+    transformed = scaled_data.copy()
+    transformed_data = transformed.reshape(len(list_station), -1, num_ft) #  20, 8642, 14
+    transformed_data = np.swapaxes(transformed_data, 0,1) # 8642, 20, 14
     
-    return list_dataset, list_scaler
+    transformed = scaled_label.copy()
+    transformed_label = transformed.reshape(len(list_station), -1) #  20, 8642, 14
+    transformed_label = np.swapaxes(transformed_label, 0,1)
 
-
-def my_series_to_supervised(data, n_in=1, n_out=1, n_timestep=1, dropnan=True):
-	"""
-	Frame a time series as a supervised learning dataset.
-	Arguments:
-		data: Sequence of observations as a list or NumPy array.
-		n_in: Number of lag observations as input (X).
-		n_out: Number of observations as output (y).
-		dropnan: Boolean whether or not to drop rows with NaN values.
-	Returns:
-		Pandas DataFrame of series framed for supervised learning.
-	"""
-	n_vars = 1 if type(data) is list else data.shape[1]
-	df = pd.DataFrame(data)
-	cols, names = list(), list()
-	# input sequence (t-n, ... t-1)
-	for i in range(n_in*n_timestep, 0, -n_timestep):
-		cols.append(df.shift(i))
-		names += [('Time%d(t-%d)' % (j+1, i)) for j in range(n_vars)]
-	# forecast sequence (t, t+1, ... t+n)
-	for i in range(0, n_out):
-		cols.append(df.shift(-i))
-		if i == 0:
-			names += [('Time%d(t)' % (j+1)) for j in range(n_vars)]
-		else:
-			names += [('Time%d(t+%d)' % (j+1, i)) for j in range(n_vars)]
-	# put it all together
-	agg = pd.concat(cols, axis=1)
-	agg.columns = names
-	# drop rows with NaN values
-	if dropnan:
-		agg.dropna(inplace=True)
-	return agg
-
-
-# def make_list_dataframe(list_dataset, list_station,  n_in, n_out, n_timestep):
-#     list_dataframe = []
-#     for i in list_station:
-#         dataset_i = list_dataset[i, :, :]
-#         dataframe_i = my_series_to_supervised(dataset_i, n_in=n_in, n_out=n_out, n_timestep=n_timestep)
-#         list_dataframe.append(dataframe_i)
+    # return transformed_data, location_, list_station
+    return transformed_data, transformed_label, scaler_label, list_station
     
-#     return list_dataframe
 
 
-def make_dataset(data_path, list_station, n_in, n_out, n_timestep, batch_size):
-    list_data_dataset, list_label_dataset, stations = get_data_array(data_path)
-    list_data_dataset, list_data_scaler = min_max_scaler(list_data_dataset, stations)
-    list_label_dataset, list_label_scaler = min_max_scaler(list_label_dataset, stations)
 
-    list_data_dataframe = []
-    list_label_dataframe = []
-    list_label_scaler_station = []
-    for i in list_station:
-        list_data_dataframe.append(list_data_dataset[i, :, :].reshape(list_data_dataset.shape[1], -1))
-        list_label_dataframe.append(list_label_dataset[i, :, :].reshape(list_label_dataset.shape[1], -1))
-        list_label_scaler_station.append(list_label_scaler[i])
-    data_frame = np.concatenate(list_data_dataframe, axis=1)
-    label_frame = np.concatenate(list_label_dataframe, axis=1)
-    import pdb;pdb.set_trace()
 
-    # list_dataframe = make_list_dataframe(list_dataset, list_station, n_in, n_out, n_timestep)
-    data_dataframe = my_series_to_supervised(data_frame, n_in, 1, n_timestep)
-    label_dataframe = my_series_to_supervised(label_frame, n_in, n_out, n_timestep)
-    data = data_dataframe.iloc[:, :-1*len(list_station)*14].astype('float32').values
-    label = label_dataframe.iloc[:, -len(list_station):].astype('float32').values
-    # list_data = []
-    # list_label = []
-    # for dataframe in list_dataframe:
-    #     list_data.append(dataframe.iloc[:, :-1])
-    #     list_label.append(dataframe.iloc[:, -1])
+def make_dataset(data_path, n_in, n_out, n_timestep, batch_size, config):
+    list_data_dataset, list_label_dataset, scaler_label, list_station = get_data_array(data_path, config)
     
-    # data = pd.concat(list_data, axis=1).astype('float32').values
-    # label = pd.concat(list_label, axis=1).astype('float32').values
+    data = []
+    for i in range (n_in,0,-1):
+        if i == n_in:
+            datai = list_data_dataset[i-1:, :, :]
+        else: 
+            datai = list_data_dataset[i-1: i-n_in, :, :]
+        data.append(np.expand_dims(datai, axis=3))
+    
+    data = np.concatenate(data, axis=3)
+    label =list_label_dataset[n_in-1:, :]
+    
 
-    data_train, data_valid_test, label_train, label_valid_test = train_test_split(data, label, test_size=0.4, random_state=42)
+    data_train, data_valid_test, label_train, label_valid_test = train_test_split(data, label, test_size=0.2, random_state=42)
     data_valid, data_test, label_valid, label_test = train_test_split(data_valid_test, label_valid_test, test_size=0.5, random_state=42)
     # data_train = np.expand_dims(data_train, axis=1)
     # data_valid = np.expand_dims(data_valid, axis=1)
@@ -133,5 +84,5 @@ def make_dataset(data_path, list_station, n_in, n_out, n_timestep, batch_size):
     train_dataloader = DataLoader(train_data, shuffle=True, batch_size=batch_size, drop_last=True)
     valid_dataloader = DataLoader(valid_data, shuffle=True, batch_size=batch_size, drop_last=True)
 
-    return train_dataloader, valid_dataloader, (data_test, label_test), list_label_scaler_station
+    return train_dataloader, valid_dataloader, (data_test, label_test), scaler_label, list_station
 

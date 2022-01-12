@@ -22,7 +22,7 @@ def train(config):
     model.to(device)
     # summary(model)
     
-    train_dataloader, valid_dataloader,(data_test, label_test), list_label_scaler_station = make_dataset(config.get('data_path'), config.get('list_station'), config.get('n_in'), config.get('n_out'), config.get('n_timestep'), config.get('batch_size'))
+    train_dataloader, valid_dataloader,(data_test, label_test), scaler_label, list_station = make_dataset(config.get('data_path'), config.get('n_in'), config.get('n_out'), config.get('n_timestep'), config.get('batch_size'), config)
 
     loss_fn = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.get('lr'))
@@ -31,6 +31,8 @@ def train(config):
     best_mae = 1e10
     best_mape = 1e10
     best_running_loss = 1e10
+    count = 0
+
     for epoch in tqdm(range(1, config.get('epochs') + 1)):
         running_loss = 0.0
         rmse = 0.0
@@ -53,9 +55,9 @@ def train(config):
             optimizer.step()
 
             running_loss += loss
-            rmse += RMSE(predict, label, list_label_scaler_station)
-            mae += MAE(predict, label, list_label_scaler_station)
-            mape += MAPE(predict, label, list_label_scaler_station)
+            rmse += RMSE(predict, label, scaler_label)
+            mae += MAE(predict, label, scaler_label)
+            mape += MAPE(predict, label, scaler_label)
         
         running_loss /= iter_cnt
         rmse /= iter_cnt
@@ -84,9 +86,9 @@ def train(config):
                 loss = loss_fn(predict, label)
 
                 running_loss += loss
-                rmse += RMSE(predict, label, list_label_scaler_station)
-                mae += MAE(predict, label, list_label_scaler_station)
-                mape += MAPE(predict, label, list_label_scaler_station)
+                rmse += RMSE(predict, label, scaler_label)
+                mae += MAE(predict, label, scaler_label)
+                mape += MAPE(predict, label, scaler_label)
             running_loss /= iter_cnt
             rmse /= iter_cnt
             mae /= iter_cnt
@@ -102,10 +104,9 @@ def train(config):
             best_mae = min(best_mae, mae)
             best_mape = min(best_mape, mape)
             best_running_loss = min(best_running_loss, running_loss)
-            count = 0
             if running_loss > best_running_loss:
                 count += 1
-                if(count == 20):
+                if(count == 10):
                     torch.save({'iter': epoch,
                                 'model_state_dict': model.state_dict(),
                                 'optimizer_state_dict': optimizer.state_dict(),},
@@ -113,8 +114,8 @@ def train(config):
                     tqdm.write('Model saved.')
                     tqdm.write('Early stopping')
                     writer.close()
-                    return data_test, label_test,list_label_scaler_station, os.path.join('checkpoints', "epoch"+str(epoch)+"_rmse"+str(best_rmse)+"_mae"+str(best_mae)+"_mape"+str(best_mape)+".pth")
-    
+                    return data_test, label_test,scaler_label, os.path.join('checkpoints', "epoch"+str(epoch)+"_rmse"+str(best_rmse)+"_mae"+str(best_mae)+"_mape"+str(best_mape)+".pth"), list_station
+            else: count =0
 
     torch.save({'iter': config.get('epochs'),
                 'model_state_dict': model.state_dict(),
@@ -122,9 +123,9 @@ def train(config):
                  os.path.join('checkpoints', "epoch"+str(config.get('epochs'))+"_rmse"+str(best_rmse)+"_mae"+str(best_mae)+"_mape"+str(best_mape)+".pth"))
     tqdm.write('Model saved.')
     writer.close()
-    return data_test, label_test,list_label_scaler_station, os.path.join('checkpoints', "epoch"+str(epoch)+"_rmse"+str(best_rmse)+"_mae"+str(best_mae)+"_mape"+str(best_mape)+".pth")
+    return data_test, label_test,scaler_label, os.path.join('checkpoints', "epoch"+str(epoch)+"_rmse"+str(best_rmse)+"_mae"+str(best_mae)+"_mape"+str(best_mape)+".pth"), list_station
                   
-def test(data_test, label_test,list_label_scaler_station, path, config):
+def test(data_test, label_test,scaler_label, path, config, list_station):
     device =torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = Hybrid(config=config)
     checkpoint = torch.load(path)
@@ -132,8 +133,6 @@ def test(data_test, label_test,list_label_scaler_station, path, config):
     model.to(device)
     loss_fn = torch.nn.MSELoss()
 
-    location_df = pd.read_csv(config.get('data_path') + "location.csv")
-    stations = location_df['location'].values
 
     test_data = TensorDataset(torch.from_numpy(data_test), torch.from_numpy(label_test))
     test_dataloader = DataLoader(test_data, shuffle=True, batch_size=config.get('batch_size'), drop_last=True)
@@ -154,9 +153,9 @@ def test(data_test, label_test,list_label_scaler_station, path, config):
 
                 running_loss += loss
                 for station in range(config.get('num_station')):
-                    rmse[station] += RMSE_1(predict[:, station], label[:, station], list_label_scaler_station[station])
-                    mae[station] += MAE_1(predict[:, station], label[:, station], list_label_scaler_station[station])
-                    mape[station] += MAPE_1(predict[:, station], label[:, station], list_label_scaler_station[station])
+                    rmse[station] += RMSE_1(predict[:, station], label[:, station], scaler_label)
+                    mae[station] += MAE_1(predict[:, station], label[:, station], scaler_label)
+                    mape[station] += MAPE_1(predict[:, station], label[:, station], scaler_label)
             running_loss = running_loss/iter_cnt
             rmse = rmse/iter_cnt
             mae = mae/iter_cnt
@@ -165,8 +164,8 @@ def test(data_test, label_test,list_label_scaler_station, path, config):
             with open('log/result.csv','w') as f:
                 f.write('Test result')
                 for i in range(config.get('num_station')):
-                    name = stations[config.get('list_station')[i]]
-                    f.write(f'Station: {name}, RMSE: {rmse[i]}, MAE: {mae[i]}, MAPE: {mape[i]}' )
+                    name = list_station[i]
+                    f.write(f'Station: {name}, RMSE: {rmse[i]}, MAE: {mae[i]}, MAPE: {mape[i]}\n' )
            
 
     data_test = torch.from_numpy(data_test[:200, :]).to(device)
@@ -178,14 +177,14 @@ def test(data_test, label_test,list_label_scaler_station, path, config):
 
     predict = predicts.cpu().detach().numpy()
     label = label_test.cpu().detach().numpy()
-    for station in range(len(list_label_scaler_station)):
-        predict[:, station] = np.squeeze(list_label_scaler_station[station][0].inverse_transform(predict[:, station].reshape(-1, 1)), axis=1)
-        label[:, station] = np.squeeze(list_label_scaler_station[station][0].inverse_transform(label[:, station].reshape(-1, 1)), axis=1)
+    for station in range(len(list_station)):
+        predict[:, station] = np.squeeze(scaler_label.inverse_transform(predict[:, station].reshape(-1, 1)), axis=1)
+        label[:, station] = np.squeeze(scaler_label.inverse_transform(label[:, station].reshape(-1, 1)), axis=1)
 
 
     
     for i in range(config.get('num_station')):
-        name = stations[config.get('list_station')[i]]
+        name = list_station[i]
         plt.plot(label[:, i], label='label')
         plt.plot(predict[:, i], label='predict')
         plt.title(f'Tram {name}')

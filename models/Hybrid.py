@@ -9,7 +9,7 @@ class Hybrid(nn.Module):
         self.n_in = config.get('n_in')
 
 
-        self.in_channels1 = config.get('conv').get('in_channels1')
+        self.in_channels1 = len(config.get('data').get('input_features'))
         self.in_channels2 = config.get('conv').get('in_channels2')
         self.in_channels3 = config.get('conv').get('in_channels3')
 
@@ -56,7 +56,7 @@ class Hybrid(nn.Module):
         self.flatten = nn.Flatten()
         # FC layer after 3 1D-Conv layer
         # self.fc_conv = nn.Linear(in_features=self.in_features_fc, out_features=self.out_features_fc)
-        self.fc_conv = nn.Linear(in_features=self.n_in*14*self.out_channels3, out_features=self.out_features_fc)
+        self.fc_conv = nn.Linear(in_features=self.out_channels3*self.n_in, out_features=self.out_features_fc)
 
         # fusion layer and linear layer at the end of model
         self.fusion = nn.Linear(in_features=(self.lookup_size + 1)*self.hidden_size*2, out_features=self.out_features_fs)
@@ -76,7 +76,7 @@ class Hybrid(nn.Module):
         list_L = []
         for i in range(self.num_station):
 
-            xi = x[ :, i*14*self.n_in : (i+1)*14*self.n_in].view(x.size()[0], 1, -1)
+            xi = torch.squeeze(x[ :,i,:, :])
             out_conv1 = self.relu(self.batchnorm1(self.conv1(xi)))
             out_conv2 = self.relu(self.batchnorm2(self.conv2(out_conv1)))
             out_conv3 = self.relu(self.batchnorm3(self.conv3(out_conv2)))

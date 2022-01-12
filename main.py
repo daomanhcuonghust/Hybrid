@@ -19,11 +19,11 @@ if __name__ == '__main__':
     seed()
     args = parse_args()
 
-    with open("config/hyperparameter.yaml") as f:
+    with open("config/hyperparameter.yaml", encoding="utf8") as f:
         config = yaml.safe_load(f)
     # for arg in args:
     #     config.arg = args.arg
     # with open('config/hyperparameter.yaml', 'w') as f:
     #     yaml.dump(config, f)
-    data_test, label_test, list_label_scaler_station, path = train(config=config)
-    test(data_test, label_test, list_label_scaler_station, path, config)
+    data_test, label_test, scaler_label, path, list_station = train(config=config)
+    test(data_test, label_test, scaler_label, path, config, list_station)
